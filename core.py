@@ -128,7 +128,7 @@ class DataInspector:
             except Exception as e:
                 print(f"❌ Error: {e}")
 
-    def handle_missing_values(self, columns=None, strategy='median', fill_value=None):
+    def _handle_missing_values(self, columns=None, strategy='median', fill_value=None):
         """
         Imputes missing values in specified columns to preserve data rows.
 
@@ -152,7 +152,7 @@ class DataInspector:
 
         print(f"🛠️ Imputation complete using '{strategy}' strategy for: {target_cols}")
 
-    def remove_duplicates(self):
+    def _remove_duplicates(self):
         """
         Identifies and removes exact duplicate rows from the DataFrame to prevent statistical bias.
         """
@@ -215,7 +215,7 @@ class DataInspector:
         self.categorical_df = self.df.select_dtypes(exclude=[np.number])
         return self.categorical_df
 
-    def extract_normalized_numeric_data(self, method='minmax'):
+    def _extract_normalized_numeric_data(self, method='minmax'):
         """
         Extracts numerical columns and scales them using the specified method.
 
@@ -270,7 +270,7 @@ class DataInspector:
         print(f"✨ Successfully scaled numerical data using the '{method_lower}' method.")
         return self.numeric_normalized_df
 
-    def extract_normalized_categorical_data(self, method='uniform'):
+    def _extract_normalized_categorical_data(self, method='uniform'):
         """
         Extracts categorical columns and applies the specified encoding method.
         
@@ -336,7 +336,7 @@ class DataInspector:
         print(f"✨ Successfully encoded categorical data using the '{method_lower}' method.")
         return self.categorical_normalized_df     
 
-    def create_normalized_data_df(self):
+    def _create_normalized_data_df(self):
         """
         Creates a single DataFrame containing the original numeric columns 
         merged side-by-side with the normalized categorical columns.
@@ -433,7 +433,7 @@ class DataInspector:
                          title=f"Frequency: {col}", color=col, color_discrete_sequence=px.colors.qualitative.Pastel)
             fig.show()
 
-    def handle_outliers(self, columns=None, find_and_delete=False):
+    def _handle_outliers(self, columns=None, find_and_delete=False):
         """
         Flags outliers using IQR logic.
         Optionally deletes the flagged rows and updates the class instance.
