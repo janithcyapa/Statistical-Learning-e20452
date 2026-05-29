@@ -162,7 +162,7 @@ class DataInspector:
         dropped = initial_count - len(self.df)
         print(f"✨ Removed {dropped} duplicate rows. New row count: {len(self.df)}")
 
-    def export_cleaned_data(self, filename='cleaned_data.csv'):
+    def _export_cleaned_data(self, filename='cleaned_data.csv'):
         """
         Converts the current state of the DataFrame to a CSV file and
         triggers a browser download in the Google Colab environment.
@@ -172,7 +172,7 @@ class DataInspector:
         files.download(filename)
         print(f"💾 '{filename}' has been generated and download triggered.")
 
-    def column_details(self):
+    def _column_details(self):
         """
         Iterates through all columns to show numeric ranges or categorical unique value counts.
         """
@@ -183,7 +183,7 @@ class DataInspector:
             else:
                 print(f"🔸 {col} (Categorical): {self.df[col].nunique()} unique values")
 
-    def get_categorical_summary(self):
+    def _get_categorical_summary(self):
         """
         Generates a detailed statistical summary for categorical columns,
         including unique counts, the most frequent value (Mode), and its frequency.
@@ -197,7 +197,7 @@ class DataInspector:
         print("--- Categorical Deep Dive ---")
         display(summary)
 
-    def extract_numeric_data(self):
+    def _extract_numeric_data(self):
         """
         Filters the DataFrame to include only numeric columns and triggers a download.
         """
@@ -206,7 +206,7 @@ class DataInspector:
         self.numeric_df = self.df.select_dtypes(include=[np.number])
         return self.numeric_df
 
-    def extract_categorical_data(self):
+    def _extract_categorical_data(self):
         """
         Filters the DataFrame to include only categorical (non-numeric) columns and triggers a download.
         """

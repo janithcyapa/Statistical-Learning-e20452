@@ -22,4 +22,3 @@ class DataInspector(DataStateMixin, DataInspectorMixin, DataPlotterMixin):
     """
     def __init__(self):
         super().__init__()
-        self.df = None

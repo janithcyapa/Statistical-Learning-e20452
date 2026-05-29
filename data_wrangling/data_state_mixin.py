@@ -5,4 +5,6 @@ class DataStateMixin:
     """
     def __init__(self):
         self.df = None
+        self.original_df = None
         self.summary_df = None
+        self.selected_df = None

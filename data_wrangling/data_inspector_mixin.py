@@ -1,6 +1,9 @@
 import pandas as pd
+import numpy as np
 import io
 import os
+import time
+import json
 try:
     from IPython.display import display
 except ImportError:
@@ -46,20 +49,28 @@ class DataInspectorMixin:
             # Attempt to convert the column to numeric, forcing errors to NaN
             numeric_col = pd.to_numeric(self.df[col], errors='coerce')
 
-            # If the conversion didn't turn the entire column into NaNs
-            # (and it wasn't already all NaN), we apply the change.
             if not numeric_col.isna().all():
                 self.df[col] = numeric_col
 
+        # Store original dataframe for resetting
+        self.original_df = self.df.copy()
+
         print(f"\n✅ File '{file_name}' loaded successfully!")
-        
-        # Automatically run get_summary after importing
         self.get_summary()
 
-    def get_summary(self):
+    def reset_df(self):
+        """Resets self.df back to the original unmodified state."""
+        if self.original_df is not None:
+            self.df = self.original_df.copy()
+            print("✅ DataFrame reset to original state.")
+            self.get_summary()
+        else:
+            print("Error: No original data to reset to.")
+
+    def get_summary(self, detailed=False):
         """
-        Generates and prints a summary DataFrame with column names, data types, 
-        number of records, and number of missing values.
+        Generates and prints a summary DataFrame. 
+        If detailed=True, includes statistical metrics based on data types.
         """
         if self.df is None:
             print("Error: No data loaded.")
@@ -67,22 +78,39 @@ class DataInspectorMixin:
         
         summary_data = []
         for col in self.df.columns:
-            summary_data.append({
+            col_data = self.df[col]
+            summary_dict = {
                 'Column Name': col,
-                'Data Type': str(self.df[col].dtype),
-                'Total Records': len(self.df[col]),
-                'Missing Values': self.df[col].isnull().sum()
-            })
+                'Data Type': str(col_data.dtype),
+                'Total Records': len(col_data),
+                'Missing Values': col_data.isnull().sum()
+            }
+            
+            if detailed:
+                if pd.api.types.is_numeric_dtype(col_data):
+                    summary_dict['Min'] = col_data.min()
+                    summary_dict['Max'] = col_data.max()
+                    summary_dict['Mean'] = col_data.mean()
+                    summary_dict['Std Dev'] = col_data.std()
+                    summary_dict['Unique Values'] = np.nan
+                    summary_dict['Most Frequent'] = np.nan
+                else:
+                    summary_dict['Min'] = np.nan
+                    summary_dict['Max'] = np.nan
+                    summary_dict['Mean'] = np.nan
+                    summary_dict['Std Dev'] = np.nan
+                    summary_dict['Unique Values'] = col_data.nunique()
+                    summary_dict['Most Frequent'] = col_data.mode()[0] if not col_data.mode().empty else np.nan
+            
+            summary_data.append(summary_dict)
         
         self.summary_df = pd.DataFrame(summary_data)
-        print("--- Data Summary ---")
+        print(f"--- Data Summary {'(Detailed)' if detailed else ''} ---")
         display(self.summary_df)
         return self.summary_df
 
     def delete_rows(self, indices, summary=False):
-        """
-        Deletes rows based on a list of indices.
-        """
+        """Deletes rows based on a list of indices."""
         if self.df is None:
             return print("No data loaded.")
         
@@ -94,9 +122,7 @@ class DataInspectorMixin:
             self.get_summary()
 
     def delete_columns(self, columns, summary=False):
-        """
-        Deletes columns based on a list of names.
-        """
+        """Deletes columns based on a list of names."""
         if self.df is None:
             return print("No data loaded.")
         
@@ -108,10 +134,7 @@ class DataInspectorMixin:
             self.get_summary()
 
     def get_missing_data(self, axis='rows'):
-        """
-        Shows and returns data missing even one value.
-        axis: 'rows' or 'columns'
-        """
+        """Shows and returns data missing even one value."""
         if self.df is None:
             return print("No data loaded.")
             
@@ -135,3 +158,101 @@ class DataInspectorMixin:
             return missing_data
         else:
             print("Invalid axis. Choose 'rows' or 'columns'.")
+
+    def extract_data(self, columns=None, column_type=None, index_column=None, row_indices=None, row_ranges=None):
+        """
+        Extracts specific data rows/columns into self.selected_df.
+        """
+        if self.df is None:
+            return print("No data loaded.")
+            
+        extracted = self.df.copy()
+        
+        # 1. Row selection
+        selected_rows = []
+        if row_indices:
+            selected_rows.extend(row_indices)
+        if row_ranges:
+            for r in row_ranges:
+                # Expecting tuples like (start, end)
+                selected_rows.extend(list(range(r[0], r[1] + 1)))
+                
+        if selected_rows:
+            selected_rows = list(set(selected_rows)) # Make unique
+            extracted = extracted.loc[extracted.index.intersection(selected_rows)]
+            
+        # 2. Column selection
+        selected_cols = []
+        if columns:
+            selected_cols = columns
+        elif column_type == 'numerical':
+            selected_cols = extracted.select_dtypes(include=[np.number]).columns.tolist()
+        elif column_type == 'categorical':
+            selected_cols = extracted.select_dtypes(exclude=[np.number]).columns.tolist()
+        else:
+            selected_cols = extracted.columns.tolist()
+            
+        # 3. Ensure index column is kept and forced to the front
+        if index_column and index_column in self.df.columns:
+            if index_column in selected_cols:
+                selected_cols.remove(index_column)
+            selected_cols.insert(0, index_column)
+            
+        selected_cols = [c for c in selected_cols if c in extracted.columns]
+        extracted = extracted[selected_cols]
+        
+        self.selected_df = extracted
+        print(f"✅ Data extracted into selected_df: {extracted.shape[0]} rows, {extracted.shape[1]} columns.")
+        display(self.selected_df.head())
+        return self.selected_df
+
+    def export_data(self, dataset='working', file_name='export', export_summary=True):
+        """
+        Exports the specified dataset ('df', 'original', 'selected') to a CSV 
+        with a timestamp, and optionally a JSON summary.
+        """
+        target_df = None
+        if dataset == 'df':
+            target_df = self.df
+        elif dataset == 'original':
+            target_df = self.original_df
+        elif dataset == 'selected':
+            target_df = self.selected_df
+        else:
+            return print("Invalid dataset. Choose 'df', 'original', or 'selected'.")
+            
+        if target_df is None:
+            return print(f"Error: {dataset} dataset is empty or not initialized.")
+            
+        epoch_time = int(time.time())
+        final_filename = f"{file_name}_{epoch_time}.csv"
+        
+        target_df.to_csv(final_filename, index=False)
+        print(f"💾 Data exported to {final_filename}")
+        
+        if export_summary:
+            summary_dict = {}
+            for col in target_df.columns:
+                col_data = target_df[col]
+                col_summary = {
+                    'Data Type': str(col_data.dtype),
+                    'Missing Values': int(col_data.isnull().sum())
+                }
+                if pd.api.types.is_numeric_dtype(col_data):
+                    col_summary['Mean'] = float(col_data.mean()) if not pd.isna(col_data.mean()) else None
+                else:
+                    col_summary['Unique Values'] = int(col_data.nunique())
+                summary_dict[col] = col_summary
+                
+            summary_filename = f"{file_name}_{epoch_time}_summary.json"
+            with open(summary_filename, 'w') as f:
+                json.dump(summary_dict, f, indent=4)
+            print(f"📄 Summary exported to {summary_filename}")
+            
+        try:
+            from google.colab import files
+            files.download(final_filename)
+            if export_summary:
+                files.download(summary_filename)
+        except ImportError:
+            pass # We are in a local environment

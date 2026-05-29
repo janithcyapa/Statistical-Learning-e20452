@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "data_wrangling"
-version = "0.1.2"
+version = "0.2.0"
 authors = [
   { name="Janith Cyapa", email="janithcyapa@gmail.com" },
 ]
@@ -24,7 +24,7 @@ dependencies = [
 packages = ["data_wrangling"]
 
 [tool.bumpver]
-current_version = "0.1.2"
+current_version = "0.2.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message = "bump version {old_version} -> {new_version}"
 commit = false

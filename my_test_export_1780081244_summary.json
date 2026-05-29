@@ -1,0 +1,42 @@
+{
+    "id": {
+        "Data Type": "int64",
+        "Missing Values": 0,
+        "Mean": 10.4
+    },
+    "age": {
+        "Data Type": "int64",
+        "Missing Values": 0,
+        "Mean": 38.5
+    },
+    "salary": {
+        "Data Type": "float64",
+        "Missing Values": 4,
+        "Mean": 73000.0
+    },
+    "department": {
+        "Data Type": "object",
+        "Missing Values": 3,
+        "Unique Values": 3
+    },
+    "is_manager": {
+        "Data Type": "object",
+        "Missing Values": 0,
+        "Unique Values": 2
+    },
+    "experience_years": {
+        "Data Type": "float64",
+        "Missing Values": 2,
+        "Mean": 8.444444444444445
+    },
+    "performance_score": {
+        "Data Type": "float64",
+        "Missing Values": 1,
+        "Mean": 84.0
+    },
+    "count": {
+        "Data Type": "int64",
+        "Missing Values": 0,
+        "Mean": 1.0
+    }
+}
