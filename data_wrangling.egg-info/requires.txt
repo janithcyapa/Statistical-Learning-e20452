@@ -1,0 +1,6 @@
+pandas
+numpy
+plotly
+scipy
+scikit-learn
+pydantic>=2.0.0
