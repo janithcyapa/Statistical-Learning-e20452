@@ -1,5 +1,3 @@
-import pandas as pd
-
 class DataStateMixin:
     """
     Mixin to hold the internal state of the dataset.
@@ -7,3 +5,4 @@ class DataStateMixin:
     """
     def __init__(self):
         self.df = None
+        self.summary_df = None

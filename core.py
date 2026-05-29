@@ -31,7 +31,7 @@ class DataInspector:
         self.normalized_data_df = None
         self.numeric_normalized_df = None
 
-    def upload_data(self):
+    def _upload_data(self):
         """
         Prompts user to upload a CSV, handles common null strings,
         and attempts to auto-convert columns to their correct numeric types.
@@ -56,7 +56,7 @@ class DataInspector:
 
         print(f"\n✅ File '{file_name}' loaded and types sanitized!")
 
-    def get_summary(self):
+    def _get_summary(self):
         """
         Prints data dimensions and column type breakdown.
         Displays the first 20 rows of the DataFrame.
@@ -72,7 +72,7 @@ class DataInspector:
         print(f"Categorical ({len(cat_cols)}): {cat_cols}")
         display(self.df.head(20))
 
-    def show_missing_data(self):
+    def _show_missing_data(self):
         """
         Filters the DataFrame to show only rows containing at least one missing (NaN) value.
         """
@@ -86,7 +86,7 @@ class DataInspector:
             print(f"🔍 Found {len(missing_rows)} rows with missing values:")
             display(missing_rows)
 
-    def delete_rows(self):
+    def _delete_rows(self):
         """
         Deletes rows based on a comma-separated list of indices provided via user input.
         """
@@ -101,7 +101,7 @@ class DataInspector:
         except Exception as e:
             print(f"❌ Error: {e}")
 
-    def delete_columns(self):
+    def _delete_columns(self):
             """
             Deletes columns based on a comma-separated list of names provided via user input.
             """
