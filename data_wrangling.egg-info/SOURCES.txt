@@ -2,6 +2,9 @@ README.md
 pyproject.toml
 data_wrangling/__init__.py
 data_wrangling/core.py
+data_wrangling/data_inspector_mixin.py
+data_wrangling/data_plotter_mixin.py
+data_wrangling/data_state_mixin.py
 data_wrangling.egg-info/PKG-INFO
 data_wrangling.egg-info/SOURCES.txt
 data_wrangling.egg-info/dependency_links.txt
