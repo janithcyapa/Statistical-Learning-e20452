@@ -521,3 +521,426 @@ class DataInspectorMixin:
                 legend=dict(orientation="h", yanchor="bottom",
                             y=-0.08, xanchor="center", x=0.5))
             fig.show()
+
+    def plot_relationship(self, col1, col2):
+        """
+        Intelligently selects the best interactive plot based on column types:
+        - Num vs Num: Scatter with Trendline
+        - Cat vs Num: Box plot with data points
+        - Cat vs Cat: Grouped bar chart
+        """
+        if self.df is None: return
+        import plotly.express as px
+        is_num1 = pd.api.types.is_numeric_dtype(self.df[col1])
+        is_num2 = pd.api.types.is_numeric_dtype(self.df[col2])
+
+        if is_num1 and is_num2:
+            fig = px.scatter(self.df, x=col1, y=col2, title=f"Relationship: {col1} vs {col2}")
+        elif is_num1 != is_num2:
+            num, cat = (col1, col2) if is_num1 else (col2, col1)
+            fig = px.box(self.df, x=cat, y=num, points="all", color=cat, title=f"Distribution of {num} by {cat}")
+        else:
+            fig = px.histogram(self.df, x=col1, color=col2, barmode="group", title=f"Relationship: {col1} vs {col2}")
+        
+        fig.update_layout(template="plotly_dark")
+        fig.show()
+
+    def plot_correlation(self, col1, col2):
+        """
+        Auto-detects data types and visualizes correlation for a specific pair of columns.
+        Combines numerical, categorical, and mixed correlations.
+        """
+        if self.df is None: return
+        import plotly.express as px
+        from scipy.stats import chi2_contingency, pointbiserialr, f_oneway
+        
+        valid_data = self.df[[col1, col2]].dropna()
+        if valid_data.empty:
+            print("No valid data without NaNs for these columns.")
+            return
+
+        is_num1 = pd.api.types.is_numeric_dtype(valid_data[col1])
+        is_num2 = pd.api.types.is_numeric_dtype(valid_data[col2])
+
+        if is_num1 and is_num2:
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                corr = valid_data[col1].corr(valid_data[col2], method='pearson') if valid_data[col1].nunique() > 1 and valid_data[col2].nunique() > 1 else 0.0
+            fig = px.scatter(valid_data, x=col1, y=col2, 
+                             title=f"Pearson Correlation (r = {corr:.3f})")
+            fig.update_layout(template="plotly_dark")
+            fig.show()
+            return corr
+        elif not is_num1 and not is_num2:
+            confusion_matrix = pd.crosstab(valid_data[col1], valid_data[col2])
+            val = 0.0
+            if confusion_matrix.size > 0 and min(confusion_matrix.shape) > 1:
+                chi2 = chi2_contingency(confusion_matrix)[0]
+                n = confusion_matrix.sum().sum()
+                if n > 0:
+                    val = np.sqrt(chi2 / (n * (min(confusion_matrix.shape) - 1)))
+            
+            fig = px.imshow(confusion_matrix, text_auto=True, color_continuous_scale="viridis",
+                            title=f"Cramér's V (V = {val:.3f}): {col1} vs {col2}")
+            fig.update_layout(template="plotly_dark")
+            fig.show()
+            return val
+        else:
+            cat_col, num_col = (col1, col2) if not is_num1 else (col2, col1)
+            categories = valid_data[cat_col].unique()
+            if len(categories) == 2:
+                binary_cat = pd.get_dummies(valid_data[cat_col], drop_first=True).iloc[:, 0]
+                corr, p_val = pointbiserialr(binary_cat, valid_data[num_col])
+                title = f"Point-Biserial (r = {corr:.3f}, p = {p_val:.4f})"
+            else:
+                groups = [valid_data[valid_data[cat_col] == c][num_col] for c in categories]
+                groups = [g for g in groups if len(g) > 0]
+                if len(groups) > 1:
+                    f_val, p_val = f_oneway(*groups)
+                    grand_mean = valid_data[num_col].mean()
+                    ss_total = ((valid_data[num_col] - grand_mean) ** 2).sum()
+                    ss_between = sum(len(g) * (g.mean() - grand_mean) ** 2 for g in groups)
+                    eta = np.sqrt(ss_between / ss_total) if ss_total > 0 else 0.0
+                    title = f"Eta from ANOVA (η = {eta:.3f}, p = {p_val:.4f})"
+                else:
+                    eta = 0.0
+                    title = f"Eta = {eta:.3f}"
+                    
+            fig = px.box(valid_data, x=cat_col, y=num_col, points="all", color=cat_col, title=title)
+            fig.update_layout(template="plotly_dark")
+            fig.show()
+            return title
+
+    def plot_all_associations_heatmap(self):
+        """
+        Creates a unified association matrix for BOTH categorical and numeric data
+        and displays it as a single interactive Plotly Heatmap.
+        """
+        if self.df is None: return print("Error: No data loaded.")
+        import plotly.express as px
+        from scipy.stats import chi2_contingency
+        
+        cols = self.df.columns
+        n_cols = len(cols)
+        
+        assoc_matrix = pd.DataFrame(np.zeros((n_cols, n_cols)), index=cols, columns=cols)
+        
+        for i in range(n_cols):
+            for j in range(i, n_cols):
+                col1 = cols[i]
+                col2 = cols[j]
+                
+                if i == j:
+                    assoc_matrix.loc[col1, col2] = 1.0
+                    continue
+                
+                valid_data = self.df[[col1, col2]].dropna()
+                if valid_data.empty:
+                    continue
+                
+                is_num1 = pd.api.types.is_numeric_dtype(valid_data[col1])
+                is_num2 = pd.api.types.is_numeric_dtype(valid_data[col2])
+                
+                if is_num1 and is_num2:
+                    import warnings
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", RuntimeWarning)
+                        val = valid_data[col1].corr(valid_data[col2], method='pearson') if valid_data[col1].nunique() > 1 and valid_data[col2].nunique() > 1 else 0.0
+                    val = abs(val) if pd.notna(val) else 0.0
+                elif not is_num1 and not is_num2:
+                    confusion_matrix = pd.crosstab(valid_data[col1], valid_data[col2])
+                    if confusion_matrix.size > 0 and min(confusion_matrix.shape) > 1:
+                        chi2 = chi2_contingency(confusion_matrix)[0]
+                        n = confusion_matrix.sum().sum()
+                        val = np.sqrt(chi2 / (n * (min(confusion_matrix.shape) - 1))) if n > 0 else 0.0
+                    else:
+                        val = 0.0
+                else:
+                    cat_col, num_col = (col1, col2) if not is_num1 else (col2, col1)
+                    categories = valid_data[cat_col].unique()
+                    if len(categories) > 1:
+                        groups = [valid_data[valid_data[cat_col] == c][num_col] for c in categories]
+                        groups = [g for g in groups if len(g) > 0]
+                        
+                        grand_mean = valid_data[num_col].mean()
+                        ss_total = ((valid_data[num_col] - grand_mean) ** 2).sum()
+                        ss_between = sum(len(g) * (g.mean() - grand_mean) ** 2 for g in groups)
+                        
+                        val = np.sqrt(ss_between / ss_total) if ss_total > 0 else 0.0
+                    else:
+                        val = 0.0
+                
+                assoc_matrix.loc[col1, col2] = round(val, 3)
+                assoc_matrix.loc[col2, col1] = round(val, 3)
+                
+        print("--- Global Association Matrix ---")
+        display(assoc_matrix)
+        
+        fig = px.imshow(
+            assoc_matrix,
+            text_auto=".2f",
+            aspect="auto",
+            color_continuous_scale="viridis",
+            title="<b>Unified Association Heatmap (Numeric & Categorical)</b>",
+            labels=dict(color="Association Strength")
+        )
+        
+        fig.update_layout(
+            height=max(500, n_cols * 45),
+            width=max(600, n_cols * 45),
+            template="plotly_dark"
+        )
+        
+        fig.show()
+        return assoc_matrix
+
+    def test_constant_mean(self, columns=None, chunks=10, show_plot=True):
+        if self.df is None: 
+            raise ValueError("Error: No data loaded.")
+
+        target_cols = columns
+        if target_cols is None:
+            target_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
+            if 'count' in target_cols: target_cols.remove('count')
+        elif isinstance(target_cols, str):
+            target_cols = [target_cols]
+            
+        analysis_df = self.df[target_cols].copy().dropna()
+        n = len(analysis_df)
+        m = len(target_cols)
+        chunk_size = n // chunks
+        if chunk_size < m:
+            raise ValueError(f"Sample size per chunk ({chunk_size}) must be greater than features ({m}). Reduce chunks.")
+
+        analysis_df['_chunk_label'] = np.minimum(np.arange(n) // chunk_size, chunks - 1)
+
+        global_mean = analysis_df[target_cols].mean().values
+        W = np.zeros((m, m))
+        B = np.zeros((m, m))
+
+        chunk_means = []
+        
+        for label, group in analysis_df.groupby('_chunk_label'):
+            X_chunk = group[target_cols].values
+            chunk_mean = X_chunk.mean(axis=0)
+            chunk_means.append(chunk_mean)
+            n_j = len(X_chunk)
+            
+            W += np.dot((X_chunk - chunk_mean).T, (X_chunk - chunk_mean))
+            mean_diff = (chunk_mean - global_mean).reshape(-1, 1)
+            B += n_j * np.dot(mean_diff, mean_diff.T)
+
+        import scipy.stats
+        epsilon = 1e-6 * np.eye(m)
+        W_stable = W + epsilon
+        T_stable = W + B + epsilon
+
+        sign_W, log_det_W = np.linalg.slogdet(W_stable)
+        sign_T, log_det_T = np.linalg.slogdet(T_stable)
+
+        log_wilks = log_det_W - log_det_T
+        wilks_lambda = np.exp(log_wilks)
+
+        df_stat = m * (chunks - 1)
+        scale_factor = n - 1 - (m + chunks) / 2
+        chi2_calc = max(0.0, -scale_factor * log_wilks)
+        p_value = 1.0 - scipy.stats.chi2.cdf(chi2_calc, df_stat)
+
+        print(f"\n--- MANOVA Mean Homogeneity Test (g={chunks} chunks, m={m} features) ---")
+        print(f"Wilks' Lambda (Λ): {wilks_lambda:.5f}")
+        print(f"Chi-Square Statistic: {chi2_calc:.4f} | Degrees of Freedom: {df_stat}")
+        print(f"P-Value: {p_value:.6f}")
+        
+        if p_value > 0.05:
+            print("✅ Success: Fail to reject H0. First joint moment is stable.")
+        else:
+            print("🚨 Warning: Reject H0. Significant mean drift detected.")
+
+        if show_plot:
+            import plotly.graph_objects as go
+            fig = go.Figure()
+            for i, col in enumerate(target_cols):
+                fig.add_trace(go.Scatter(
+                    x=list(range(1, chunks + 1)),
+                    y=[cm[i] for cm in chunk_means],
+                    mode='lines+markers',
+                    name=col
+                ))
+            fig.update_layout(
+                title="Chunk Means Over Sequential Blocks",
+                xaxis_title="Chunk Number",
+                yaxis_title="Mean Value",
+                template="plotly_dark"
+            )
+            fig.show()
+
+        return {"wilks_lambda": wilks_lambda, "chi2": chi2_calc, "p_value": p_value, "df": df_stat}
+
+    def test_constant_covariance(self, columns=None, chunks=5, show_plot=True):
+        if self.df is None: 
+            raise ValueError("Error: No data loaded.")
+
+        target_cols = columns
+        if target_cols is None:
+            target_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
+            if 'count' in target_cols: target_cols.remove('count')
+        elif isinstance(target_cols, str):
+            target_cols = [target_cols]
+
+        analysis_df = self.df[target_cols].copy().dropna()
+        n = len(analysis_df)
+        m = len(target_cols)
+        chunk_size = n // chunks
+        
+        if chunk_size <= m:
+            raise ValueError(f"Degrees of freedom per chunk ({chunk_size - 1}) must be greater than number of dimensions ({m}). Reduce chunks.")
+
+        analysis_df['_chunk_label'] = np.minimum(np.arange(n) // chunk_size, chunks - 1)
+        
+        S_chunks = []
+        n_chunks = []
+        log_det_S = 0.0
+        pooled_S = np.zeros((m, m))
+        total_df = 0
+        
+        epsilon = 1e-6 * np.eye(m)
+        chunk_variances = []
+        
+        for label, group in analysis_df.groupby('_chunk_label'):
+            X_chunk = group[target_cols].values
+            n_j = len(X_chunk)
+            S_j = np.cov(X_chunk, rowvar=False, ddof=1) + epsilon
+            
+            chunk_variances.append(np.diag(S_j))
+
+            S_chunks.append(S_j)
+            n_chunks.append(n_j)
+            
+            df_j = n_j - 1
+            pooled_S += df_j * S_j
+            total_df += df_j
+            
+            sign, logdet = np.linalg.slogdet(S_j)
+            log_det_S += df_j * logdet
+
+        pooled_S /= total_df
+        sign_p, log_det_Sp = np.linalg.slogdet(pooled_S)
+
+        M = total_df * log_det_Sp - log_det_S
+        
+        sum_inv_df = sum(1.0 / (nj - 1) for nj in n_chunks)
+        inv_total_df = 1.0 / total_df
+        numerator_C = 2.0 * m**2 + 3.0 * m - 1.0
+        denominator_C = 6.0 * (m + 1.0) * (chunks - 1.0)
+        C = (sum_inv_df - inv_total_df) * (numerator_C / denominator_C)
+        
+        chi2_calc = max(0.0, M * (1.0 - C))
+        df_stat = (m * (m + 1) * (chunks - 1)) / 2.0
+        import scipy.stats
+        p_value = 1.0 - scipy.stats.chi2.cdf(chi2_calc, df_stat)
+
+        print(f"\n--- Box's M Covariance Homogeneity Test (g={chunks} chunks, m={m} features) ---")
+        print(f"Box's M Statistic: {M:.4f}")
+        print(f"Asymptotic Chi-Square: {chi2_calc:.4f} | Degrees of Freedom: {int(df_stat)}")
+        print(f"P-Value: {p_value:.6f}")
+        
+        if p_value > 0.001:
+            print("✅ Success: Fail to reject H0. Covariance structure is stable.")
+        else:
+            print("🚨 Warning: Reject H0. Covariance drift detected.")
+
+        if show_plot:
+            import plotly.graph_objects as go
+            fig = go.Figure()
+            for i, col in enumerate(target_cols):
+                fig.add_trace(go.Scatter(
+                    x=list(range(1, chunks + 1)),
+                    y=[cv[i] for cv in chunk_variances],
+                    mode='lines+markers',
+                    name=f"Var({col})"
+                ))
+            fig.update_layout(
+                title="Chunk Variances Over Sequential Blocks",
+                xaxis_title="Chunk Number",
+                yaxis_title="Variance",
+                template="plotly_dark"
+            )
+            fig.show()
+
+        return {"M": M, "chi2": chi2_calc, "p_value": p_value, "df": int(df_stat)}
+
+    def test_row_independence(self, columns=None, max_lag=None, show_plot=True):
+        if self.df is None: 
+            raise ValueError("Error: No data loaded.")
+
+        target_cols = columns
+        if target_cols is None:
+            target_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
+            if 'count' in target_cols: target_cols.remove('count')
+        elif isinstance(target_cols, str):
+            target_cols = [target_cols]
+
+        analysis_df = self.df[target_cols].copy().dropna()
+        n = len(analysis_df)
+        m = len(target_cols)
+        
+        if max_lag is None:
+            max_lag = int(np.ceil(np.log(n)))
+        
+        X = analysis_df[target_cols].values
+        X_centered = X - X.mean(axis=0)
+        
+        epsilon = 1e-6 * np.eye(m)
+        Gamma_0 = (np.dot(X_centered.T, X_centered) / n) + epsilon
+        
+        try:
+            inv_Gamma_0 = np.linalg.inv(Gamma_0)
+        except np.linalg.LinAlgError:
+            inv_Gamma_0 = np.linalg.pinv(Gamma_0)
+        
+        Q_m = 0.0
+        lag_correlations = []
+        
+        for k in range(1, max_lag + 1):
+            Gamma_k = np.dot(X_centered[k:].T, X_centered[:-k]) / n
+            M_k = np.dot(np.dot(np.dot(Gamma_k.T, inv_Gamma_0), Gamma_k), inv_Gamma_0)
+            trace_val = np.trace(M_k)
+            lag_correlations.append(trace_val / m) # simple pseudo-correlation metric for the plot
+            
+            Q_m += trace_val / (n - k)
+            
+        Q_m *= (n ** 2)
+        Q_m = max(0.0, Q_m)
+        df_stat = (m ** 2) * max_lag
+        import scipy.stats
+        p_value = 1.0 - scipy.stats.chi2.cdf(Q_m, df_stat)
+
+        print(f"\n--- Multivariate Ljung-Box Serial Independence Test (Lags Checked = {max_lag}) ---")
+        print(f"Portmanteau Statistic Q_m(H): {Q_m:.4f}")
+        print(f"Degrees of Freedom: {df_stat}")
+        print(f"P-Value: {p_value:.6f}")
+        
+        if p_value > 0.05:
+            print("✅ Success: Fail to reject H0. Rows are independent.")
+        else:
+            print("🚨 Warning: Reject H0. Serial dependency detected.")
+
+        if show_plot:
+            import plotly.graph_objects as go
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=list(range(1, max_lag + 1)),
+                y=lag_correlations,
+                name="Multivariate Lag Correlation",
+                marker_color="indianred"
+            ))
+            fig.update_layout(
+                title="Multivariate Autocorrelation by Lag",
+                xaxis_title="Lag k",
+                yaxis_title="Trace Statistic (Normalized)",
+                template="plotly_dark"
+            )
+            fig.show()
+
+        return {"Q_m": Q_m, "p_value": p_value, "df": df_stat}
