@@ -24,17 +24,17 @@
 - [x] **Outlier Management**: Flag and delete outliers using IQR logic.
 - [x] **Unified Normalization**: Apply scaling and categorical encoding safely.
 
-### 4. 📊 Interactive Visualizations (`DataPlotterMixin`)
-- [ ] **Numerical Subplots**: Plotly histograms/box plots for numeric features.
-- [ ] **Multi-Type Relationships**: Scatter plots and Box plots.
-- [ ] **Categorical Frequencies**: Colored bar charts for distributions.
+### 4. 📊 Interactive Visualizations (`DataPlotterMixin` or `DataInspectorMixin`)
+- [x] **Numerical Subplots**: Plotly histograms/box plots for numeric features.
+- [x] **Multi-Type Relationships**: Scatter plots and Box plots.
+- [x] **Categorical Frequencies**: Colored bar charts for distributions.
 
 ### 5. 🧠 Statistical Insights & Associations
-- [ ] **Association Engine**: Pearson's r, Cramér's V, Point-Biserial, Eta calculations.
-- [ ] **Unified Heatmap**: Plotly heatmap mapping cross-type associations.
+- [x] **Association Engine**: Pearson's r, Cramér's V, Point-Biserial, Eta calculations.
+- [x] **Unified Heatmap**: Plotly heatmap mapping cross-type associations.
 
 ### 6. 🎨 Standalone Graphing
-- [ ] **PlottingMethods**: Isolated chart generation class.
+- [x] **PlottingMethods**: Isolated chart generation class.
 
 ---
 
@@ -44,6 +44,7 @@
 * **Rich Data Exporting**: `export_data()` creates timestamped files and exports a parallel `.json` file containing dataset metadata.
 * **Type-Safe Normalization Guards**: The `modify_normalize_data()` function throws intentional errors if you try to apply a numeric scaler to a categorical column (or vice-versa).
 * **Automated Version Control**: Integrated `bumpver` for semantic version bumping.
+* **Continuous Visual Testers**: Integrated `test_constant_mean` (MANOVA), `test_constant_covariance` (Box's M), and `test_row_independence` (Multivariate Ljung-Box) with real-time sequential visual reporting.
 
 ---
 

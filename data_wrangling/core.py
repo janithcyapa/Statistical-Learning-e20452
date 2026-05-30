@@ -1,7 +1,7 @@
 import logging
 from .data_state_mixin import DataStateMixin
 from .data_inspector_mixin import DataInspectorMixin
-from .data_plotter import DataPlotter
+from .data_plotter import DataPlotter, PlottingMethods
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
