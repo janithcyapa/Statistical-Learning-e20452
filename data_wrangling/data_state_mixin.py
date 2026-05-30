@@ -20,7 +20,22 @@ class DataStateMixin:
 
     def load_data(self, file_path=None, df=None):
         """
-        Loads a CSV file into self.df. Supports local paths, Google Colab upload, or direct df injection.
+        Loads a CSV file or an existing DataFrame into the instance's state (`self.df`).
+        It also handles missing values strings intelligently and attempts to automatically 
+        coerce columns to their appropriate numeric types.
+        
+        Parameters
+        ----------
+        file_path : str, optional
+            The local file path to a CSV dataset. If running in Google Colab and neither `df` 
+            nor `file_path` is provided, a file upload prompt will be triggered automatically.
+        df : pandas.DataFrame, optional
+            A pre-loaded DataFrame to inject directly into the class state.
+            
+        Returns
+        -------
+        None
+            The function does not return a value but updates `self.df` and `self.original_df`.
         """
         file_name = None
         
@@ -68,7 +83,19 @@ class DataStateMixin:
             self.get_summary()
 
     def reset_df(self):
-        """Resets self.df back to the original unmodified state."""
+        """
+        Resets the working DataFrame (`self.df`) back to its original state exactly as it was 
+        when `load_data` was first called, abandoning any cleaning or transformations performed.
+        
+        Parameters
+        ----------
+        None
+        
+        Returns
+        -------
+        None
+            Updates `self.df` in-place and prints a summary if available.
+        """
         if self.original_df is not None:
             self.df = self.original_df.copy()
             print("✅ DataFrame reset to original state.")
@@ -79,8 +106,26 @@ class DataStateMixin:
 
     def export_data(self, dataset='working', file_name='export', export_summary=True):
         """
-        Exports the specified dataset ('working'/'df', 'original', 'selected') to a CSV 
-        with a timestamp, and optionally a JSON summary.
+        Exports the specified dataset state to a CSV file appended with an epoch timestamp.
+        Optionally exports a parallel JSON metadata file detailing column types, missing counts, 
+        and statistical summaries. If running in Google Colab, triggers automatic browser downloads.
+        
+        Parameters
+        ----------
+        dataset : str, default 'working'
+            The specific dataset state to export. Options are:
+            - 'working' or 'df': The current modified dataset (`self.df`).
+            - 'original': The initial pristine dataset (`self.original_df`).
+            - 'selected': The dataset generated via extraction operations (`self.selected_df`).
+        file_name : str, default 'export'
+            The base prefix for the exported file names.
+        export_summary : bool, default True
+            If True, generates a paired `.json` file containing metadata and basic statistics.
+            
+        Returns
+        -------
+        None
+            Generates files on the disk and triggers downloads.
         """
         target_df = None
         if dataset in ['df', 'working']:

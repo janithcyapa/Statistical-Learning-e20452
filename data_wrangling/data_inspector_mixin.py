@@ -10,6 +10,21 @@ class DataInspectorMixin:
     Mixin for data cleaning, preprocessing, and modification.
     """
     def get_summary(self, detailed=False):
+        """
+        Generates and displays a structural summary of the loaded dataset.
+        
+        Parameters
+        ----------
+        detailed : bool, default False
+            If True, calculates and appends statistical metrics (Min, Max, Mean, Std Dev) 
+            for numerical columns, and frequency metrics (Unique Values, Most Frequent) 
+            for categorical columns.
+            
+        Returns
+        -------
+        pandas.DataFrame or None
+            A DataFrame containing the summary metadata. Returns None if no data is loaded.
+        """
         if self.df is None:
             print("Error: No data loaded.")
             return None
@@ -48,6 +63,21 @@ class DataInspectorMixin:
         return self.summary_df
 
     def get_missing_data(self, axis='rows'):
+        """
+        Isolates and displays portions of the dataset containing missing (NaN) values.
+        
+        Parameters
+        ----------
+        axis : {'rows', 'columns'}, default 'rows'
+            The dimension to filter on.
+            - 'rows': Returns only rows that contain at least one NaN value.
+            - 'columns': Returns the entire dataset but exclusively for columns containing NaNs.
+            
+        Returns
+        -------
+        pandas.DataFrame or None
+            The filtered DataFrame containing the missing data.
+        """
         if self.df is None: return print("No data loaded.")
         if axis == 'rows':
             missing_mask = self.df.isnull().any(axis=1)
@@ -69,6 +99,28 @@ class DataInspectorMixin:
             print("Invalid axis. Choose 'rows' or 'columns'.")
 
     def extract_data(self, columns=None, column_type=None, index_column=None, row_indices=None, row_ranges=None):
+        """
+        Extracts a customized subset of the working dataset based on complex slicing parameters.
+        The extracted subset is stored in `self.selected_df` and displayed.
+        
+        Parameters
+        ----------
+        columns : list of str, optional
+            A specific list of column names to extract.
+        column_type : {'numerical', 'categorical'}, optional
+            Automatically filters columns by their data type. Ignored if `columns` is provided.
+        index_column : str, optional
+            A column name to pin to the front of the extracted dataset (useful for IDs/labels).
+        row_indices : list of int, optional
+            A list of specific row index numbers to extract.
+        row_ranges : list of tuple, optional
+            A list of tuples defining (start, end) inclusive row index bounds to extract.
+            
+        Returns
+        -------
+        pandas.DataFrame or None
+            The newly extracted DataFrame subset (`self.selected_df`).
+        """
         if self.df is None: return print("No data loaded.")
         extracted = self.df.copy()
         
@@ -98,6 +150,22 @@ class DataInspectorMixin:
         return self.selected_df
 
     def delete_rows(self, indices, summary=False):
+        """
+        Permanently deletes specific rows from the working dataset (`self.df`) by their index.
+        The index is automatically reset after deletion.
+        
+        Parameters
+        ----------
+        indices : list of int
+            A list of row indices to remove.
+        summary : bool, default False
+            If True, automatically triggers `get_summary()` after deletion.
+            
+        Returns
+        -------
+        None
+            Modifies `self.df` in-place.
+        """
         if self.df is None: return print("No data loaded.")
         existing_indices = [i for i in indices if i in self.df.index]
         self.df = self.df.drop(index=existing_indices).reset_index(drop=True)
@@ -105,6 +173,21 @@ class DataInspectorMixin:
         if summary: self.get_summary()
 
     def delete_columns(self, columns, summary=False):
+        """
+        Permanently deletes specific columns from the working dataset (`self.df`).
+        
+        Parameters
+        ----------
+        columns : list of str
+            A list of column names to remove.
+        summary : bool, default False
+            If True, automatically triggers `get_summary()` after deletion.
+            
+        Returns
+        -------
+        None
+            Modifies `self.df` in-place.
+        """
         if self.df is None: return print("No data loaded.")
         existing_cols = [c for c in columns if c in self.df.columns]
         self.df = self.df.drop(columns=existing_cols)
@@ -114,7 +197,27 @@ class DataInspectorMixin:
     # --- DATA MODIFIERS ---
 
     def modify_missing_values(self, columns=None, strategy='median', fill_value=None):
-        """Imputes missing values in specified columns."""
+        """
+        Imputes missing values (NaNs) in specified columns using statistical estimators or constants.
+        
+        Parameters
+        ----------
+        columns : list of str or str, optional
+            A list of column names to impute. If None, targets all columns containing NaNs.
+        strategy : {'mean', 'median', 'mode', 'constant'}, default 'median'
+            The mathematical strategy used to derive the fill value.
+            - 'mean': Uses the arithmetic average (numeric columns only).
+            - 'median': Uses the exact middle value (numeric columns only).
+            - 'mode': Uses the most frequently occurring value (all types).
+            - 'constant': Uses the user-defined `fill_value`.
+        fill_value : any, optional
+            The static value to inject when using the 'constant' strategy.
+            
+        Returns
+        -------
+        None
+            Modifies `self.df` in-place.
+        """
         if self.df is None: return print("No data loaded.")
         target_cols = columns if columns else self.df.columns[self.df.isnull().any()].tolist()
         if isinstance(target_cols, str): target_cols = [target_cols]
@@ -135,7 +238,19 @@ class DataInspectorMixin:
         print(f"🛠️ Missing values imputed using '{strategy}' strategy for: {target_cols}")
 
     def modify_duplicates(self):
-        """Removes exact duplicate rows."""
+        """
+        Scans the entire dataset for completely identical rows and permanently removes them,
+        retaining only the first occurrence. Automatically resets the row index.
+        
+        Parameters
+        ----------
+        None
+        
+        Returns
+        -------
+        None
+            Modifies `self.df` in-place and prints the number of dropped rows.
+        """
         if self.df is None: return print("No data loaded.")
         initial_count = len(self.df)
         self.df = self.df.drop_duplicates().reset_index(drop=True)
@@ -143,7 +258,23 @@ class DataInspectorMixin:
         print(f"✨ Removed {dropped} duplicate rows. New row count: {len(self.df)}")
 
     def modify_outliers(self, columns=None, find_and_delete=False):
-        """Flags or deletes outliers using IQR logic."""
+        """
+        Detects anomalies in numerical data using the Interquartile Range (IQR) bounding logic.
+        Values falling below Q1 - 1.5*IQR or above Q3 + 1.5*IQR are flagged.
+        
+        Parameters
+        ----------
+        columns : list of str or str, optional
+            Specific numerical columns to check. If None, sweeps all numerical columns automatically.
+        find_and_delete : bool, default False
+            If True, automatically deletes any rows containing at least one flagged outlier. 
+            If False, only prints a diagnostic report detailing the outlier frequencies.
+            
+        Returns
+        -------
+        None
+            Modifies `self.df` in-place only if `find_and_delete` is True.
+        """
         if self.df is None: return print("No data loaded.")
         target_cols = columns if columns else self.df.select_dtypes(include=[np.number]).columns.tolist()
         if isinstance(target_cols, str): target_cols = [target_cols]
@@ -170,9 +301,26 @@ class DataInspectorMixin:
 
     def modify_normalize_data(self, columns, method, replace=True):
         """
-        Normalizes or encodes columns.
-        Valid methods for numeric: 'minmax', 'standard', 'robust'
-        Valid methods for categorical: 'uniform', 'ordinal', 'onehot', 'minmax_ordinal'
+        Applies mathematical transformations to data arrays for standardization or machine learning prep.
+        Features strict type-checking to prevent processing categorical logic on numeric floats.
+        
+        Parameters
+        ----------
+        columns : list of str or str
+            The column names to transform.
+        method : {'minmax', 'standard', 'robust', 'uniform', 'ordinal', 'onehot', 'minmax_ordinal'}
+            The scaler algorithm to apply:
+            - Numeric bounds: 'minmax', 'standard' (Z-score), 'robust' (IQR-scaled).
+            - Categorical mappings: 'uniform' (0-1 scaled codes), 'ordinal' (0-N integers), 
+              'onehot' (explodes into binary matrix), 'minmax_ordinal' (minmax scaled ordinal).
+        replace : bool, default True
+            If True, overrides the original column with the newly scaled data. 
+            If False, appends the transformed data as new distinct columns suffixed with `_{method}`.
+            
+        Returns
+        -------
+        None
+            Modifies `self.df` in-place.
         """
         if self.df is None: return print("No data loaded.")
         if isinstance(columns, str): columns = [columns]
@@ -524,10 +672,20 @@ class DataInspectorMixin:
 
     def plot_relationship(self, col1, col2):
         """
-        Intelligently selects the best interactive plot based on column types:
-        - Num vs Num: Scatter with Trendline
-        - Cat vs Num: Box plot with data points
-        - Cat vs Cat: Grouped bar chart
+        Intelligently selects and displays the optimal interactive Plotly chart to visualize the 
+        relationship between two specific columns based on their intrinsic data types.
+        
+        Parameters
+        ----------
+        col1 : str
+            The first column to plot (usually mapped to the X-axis).
+        col2 : str
+            The second column to plot (usually mapped to the Y-axis/Color).
+            
+        Returns
+        -------
+        None
+            Renders an interactive Plotly chart directly in the notebook output.
         """
         if self.df is None: return
         import plotly.express as px
@@ -547,8 +705,25 @@ class DataInspectorMixin:
 
     def plot_correlation(self, col1, col2):
         """
-        Auto-detects data types and visualizes correlation for a specific pair of columns.
-        Combines numerical, categorical, and mixed correlations.
+        Auto-detects column data types and calculates the correct statistical association metric 
+        between them, generating a tailored visualization.
+        
+        - Numeric vs Numeric: Pearson's r (Scatter plot)
+        - Categorical vs Categorical: Cramér's V (Confusion Matrix Heatmap)
+        - Categorical vs Numeric: Point-Biserial or One-Way ANOVA Eta (Box plot)
+        
+        Parameters
+        ----------
+        col1 : str
+            The first column for correlation calculation.
+        col2 : str
+            The second column for correlation calculation.
+            
+        Returns
+        -------
+        float or str
+            The computed correlation value (Pearson's r, Cramér's V) or a formatted string 
+            containing the Eta/Point-Biserial statistics.
         """
         if self.df is None: return
         import plotly.express as px
@@ -614,8 +789,19 @@ class DataInspectorMixin:
 
     def plot_all_associations_heatmap(self):
         """
-        Creates a unified association matrix for BOTH categorical and numeric data
-        and displays it as a single interactive Plotly Heatmap.
+        Computes a unified global association matrix combining both numeric and categorical 
+        relationships across the entire dataset. It handles dynamic metric selection 
+        (Pearson, Cramér's V, ANOVA Eta) automatically.
+        
+        Parameters
+        ----------
+        None
+        
+        Returns
+        -------
+        pandas.DataFrame
+            A square DataFrame matrix containing the pairwise association strengths (0.0 to 1.0) 
+            for all columns in the dataset.
         """
         if self.df is None: return print("Error: No data loaded.")
         import plotly.express as px
@@ -696,6 +882,25 @@ class DataInspectorMixin:
         return assoc_matrix
 
     def test_constant_mean(self, columns=None, chunks=10, show_plot=True):
+        """
+        Performs a Multivariate Analysis of Variance (MANOVA) based test to evaluate whether 
+        the structural mean of the dataset is stable across sequential chronological chunks.
+        
+        Parameters
+        ----------
+        columns : list of str, optional
+            Numerical columns to include in the joint test. Defaults to all numeric columns.
+        chunks : int, default 10
+            The number of sequential segments to split the dataset into.
+        show_plot : bool, default True
+            If True, generates a line plot showing the drift of the chunk means over time.
+            
+        Returns
+        -------
+        dict
+            A dictionary containing the statistical test results:
+            {'wilks_lambda': float, 'chi2': float, 'p_value': float, 'df': int}
+        """
         if self.df is None: 
             raise ValueError("Error: No data loaded.")
 
@@ -778,6 +983,25 @@ class DataInspectorMixin:
         return {"wilks_lambda": wilks_lambda, "chi2": chi2_calc, "p_value": p_value, "df": df_stat}
 
     def test_constant_covariance(self, columns=None, chunks=5, show_plot=True):
+        """
+        Performs Box's M-test to evaluate whether the multivariate covariance structure 
+        is stable (homoscedastic) across sequential chronological chunks.
+        
+        Parameters
+        ----------
+        columns : list of str, optional
+            Numerical columns to include in the joint test. Defaults to all numeric columns.
+        chunks : int, default 5
+            The number of sequential segments to split the dataset into.
+        show_plot : bool, default True
+            If True, generates a line plot showing the drift of feature variances over time.
+            
+        Returns
+        -------
+        dict
+            A dictionary containing the statistical test results:
+            {'M': float, 'chi2': float, 'p_value': float, 'df': int}
+        """
         if self.df is None: 
             raise ValueError("Error: No data loaded.")
 
@@ -871,6 +1095,25 @@ class DataInspectorMixin:
         return {"M": M, "chi2": chi2_calc, "p_value": p_value, "df": int(df_stat)}
 
     def test_row_independence(self, columns=None, max_lag=None, show_plot=True):
+        """
+        Implements a Multivariate Ljung-Box Portmanteau test for serial independence.
+        Checks for autoregressive dependencies (autocorrelation) across sequential rows.
+        
+        Parameters
+        ----------
+        columns : list of str, optional
+            Numerical columns to evaluate. Defaults to all numeric columns.
+        max_lag : int, optional
+            The maximum number of row-lags to check. Defaults to ceil(log(N)).
+        show_plot : bool, default True
+            If True, generates a bar chart displaying the pseudo-correlation metrics by lag.
+            
+        Returns
+        -------
+        dict
+            A dictionary containing the statistical test results:
+            {'Q_m': float, 'p_value': float, 'df': int}
+        """
         if self.df is None: 
             raise ValueError("Error: No data loaded.")
 
