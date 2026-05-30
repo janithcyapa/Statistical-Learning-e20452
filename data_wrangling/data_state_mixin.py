@@ -18,14 +18,17 @@ class DataStateMixin:
         self.summary_df = None
         self.selected_df = None
 
-    def load_data(self, file_path=None):
+    def load_data(self, file_path=None, df=None):
         """
-        Loads a CSV file into self.df. Supports both local paths and Google Colab upload.
+        Loads a CSV file into self.df. Supports local paths, Google Colab upload, or direct df injection.
         """
         file_name = None
         
+        if df is not None:
+            self.df = df.copy()
+            file_name = "Provided_DataFrame"
         # Local Environment
-        if file_path is not None:
+        elif file_path is not None:
             if not os.path.exists(file_path):
                 print(f"Error: File '{file_path}' not found.")
                 return

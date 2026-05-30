@@ -1,6 +1,6 @@
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
-from .core import log_version, DataInspector, PlottingMethods
+from .core import log_version, DataInspector, DataPlotter
 
 def get_version():
     """Returns the current version of the library."""
