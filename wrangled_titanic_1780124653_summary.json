@@ -1,0 +1,67 @@
+{
+    "PassengerId": {
+        "Data Type": "int64",
+        "Missing Values": 0,
+        "Mean": 446.0
+    },
+    "Survived": {
+        "Data Type": "int64",
+        "Missing Values": 0,
+        "Mean": 0.3838383838383838
+    },
+    "Pclass": {
+        "Data Type": "int64",
+        "Missing Values": 0,
+        "Mean": 2.308641975308642
+    },
+    "Name": {
+        "Data Type": "object",
+        "Missing Values": 0,
+        "Unique Values": 891
+    },
+    "Sex": {
+        "Data Type": "object",
+        "Missing Values": 0,
+        "Unique Values": 2
+    },
+    "Age": {
+        "Data Type": "float64",
+        "Missing Values": 177,
+        "Mean": 29.69911764705882
+    },
+    "SibSp": {
+        "Data Type": "int64",
+        "Missing Values": 0,
+        "Mean": 0.5230078563411896
+    },
+    "Parch": {
+        "Data Type": "int64",
+        "Missing Values": 0,
+        "Mean": 0.38159371492704824
+    },
+    "Ticket": {
+        "Data Type": "float64",
+        "Missing Values": 230,
+        "Mean": 260318.54916792738
+    },
+    "Fare": {
+        "Data Type": "float64",
+        "Missing Values": 0,
+        "Mean": 32.204207968574636
+    },
+    "Cabin": {
+        "Data Type": "object",
+        "Missing Values": 687,
+        "Unique Values": 147
+    },
+    "Embarked": {
+        "Data Type": "object",
+        "Missing Values": 2,
+        "Unique Values": 3
+    },
+    "count": {
+        "Data Type": "int64",
+        "Missing Values": 0,
+        "Mean": 1.0
+    }
+}
