@@ -235,59 +235,97 @@ class DataInspectorMixin:
                     new_name = f"{k}_{method}" if method != 'onehot' else k
                     self.df[new_name] = v
 
-    def summary_plot(self, default_columns=None):
+    def summary_plot(self, default_columns=None, 
+                     numeric_plots=['violin', 'scatter', 'histogram', 'distplot'], 
+                     categorical_plots=['pie', 'histogram']):
         """
         Creates a comprehensive multi-row Plotly visualization dashboard.
         Every column gets its own dedicated row of subplots. 
         Native Plotly legends act as checkboxes to hide/show data.
+        Allows customization of which plots are shown per data type.
         """
         if self.df is None: return print("No data loaded.")
         cols = default_columns if default_columns else self.df.columns.tolist()
-        
+            
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
         import plotly.express as px
+        import plotly.figure_factory as ff
         
-        # Build dynamic subplot specs
-        specs = []
-        titles = []
+        max_cols = 0
+        row_specs = []
+        row_titles = []
+        
         for col in cols:
-            if pd.api.types.is_numeric_dtype(self.df[col]):
-                specs.append([{"type": "xy"}, {"type": "xy"}, {"type": "xy"}])
-                titles.extend([f"{col}: Distribution", f"{col}: Index vs Value", f"{col}: Histogram"])
-            else:
-                # Categorical uses Domain for Pie charts
-                specs.append([{"type": "xy"}, {"type": "domain"}, {"type": "domain"}])
-                titles.extend([f"{col}: Frequency Bar", f"{col}: Distribution Pie", ""])
-        
-        # Calculate dynamic height
-        row_height = 300
-        fig = make_subplots(rows=len(cols), cols=3, specs=specs, subplot_titles=titles, vertical_spacing=0.05)
-        
+            is_num = pd.api.types.is_numeric_dtype(self.df[col])
+            plot_types = numeric_plots if is_num else categorical_plots
+            max_cols = max(max_cols, len(plot_types))
+            
+            current_spec = []
+            for pt in plot_types:
+                current_spec.append({"type": "domain"} if pt == 'pie' else {"type": "xy"})
+            row_specs.append(current_spec)
+            
+            for pt in plot_types:
+                row_titles.append(f"{col}: {pt.capitalize()}")
+                
+        # Pad specs if rows have different number of columns
+        for spec_row in row_specs:
+            while len(spec_row) < max_cols:
+                spec_row.append(None)
+                row_titles.append("")
+                
+        # Tighten the spacing between rows and columns
+        fig = make_subplots(rows=len(cols), cols=max_cols, specs=row_specs, subplot_titles=row_titles, vertical_spacing=0.04, horizontal_spacing=0.04)
         colors = px.colors.qualitative.Plotly
         
         for i, col in enumerate(cols):
             row = i + 1
-            color = colors[i % len(colors)]
+            is_num = pd.api.types.is_numeric_dtype(self.df[col])
+            plot_types = numeric_plots if is_num else categorical_plots
+            base_color = colors[i % len(colors)]
             
-            if pd.api.types.is_numeric_dtype(self.df[col]):
-                # Numeric: Violin (with points), Scatter, Histogram
-                fig.add_trace(go.Violin(x=self.df[col], name=col, box_visible=True, meanline_visible=True, points="all", marker_color=color, legendgroup=col), row=row, col=1)
-                fig.add_trace(go.Scatter(x=self.df.index, y=self.df[col], mode='markers', name=col, marker_color=color, legendgroup=col, showlegend=False), row=row, col=2)
-                fig.add_trace(go.Histogram(x=self.df[col], name=col, marker_color=color, legendgroup=col, showlegend=False), row=row, col=3)
-            else:
-                # Categorical: Bar, Pie
-                value_counts = self.df[col].value_counts().reset_index()
-                value_counts.columns = [col, 'count']
+            for j, pt in enumerate(plot_types):
+                col_idx = j + 1
                 
-                fig.add_trace(go.Bar(x=value_counts[col], y=value_counts['count'], name=col, marker_color=color, legendgroup=col), row=row, col=1)
-                fig.add_trace(go.Pie(labels=value_counts[col], values=value_counts['count'], name=col, legendgroup=col, showlegend=False), row=row, col=2)
-                
+                if is_num:
+                    if pt == 'violin':
+                        fig.add_trace(go.Violin(x=self.df[col], name=col, box_visible=True, points="all", marker_color=base_color, showlegend=False), row=row, col=col_idx)
+                    elif pt == 'scatter':
+                        fig.add_trace(go.Scatter(x=self.df.index, y=self.df[col], mode='markers', name=col, marker_color=base_color, showlegend=False), row=row, col=col_idx)
+                    elif pt == 'histogram':
+                        # Use base color but add gaps between bars in the layout
+                        fig.add_trace(go.Histogram(x=self.df[col], name=col, marker_color=base_color, showlegend=False), row=row, col=col_idx)
+                    elif pt == 'distplot':
+                        try:
+                            hist_data = [self.df[col].dropna()]
+                            fig_dist = ff.create_distplot(hist_data, [col], colors=[base_color])
+                            for trace in fig_dist['data']:
+                                trace.xaxis = None # Strip anchors to fit in subplot
+                                trace.yaxis = None
+                                trace.showlegend = False
+                                fig.add_trace(trace, row=row, col=col_idx)
+                        except Exception as e:
+                            print(f"Distplot error for {col}: {e}")
+                else:
+                    val_counts = self.df[col].value_counts().reset_index()
+                    val_counts.columns = [col, 'count']
+                    
+                    if pt == 'pie':
+                        fig.add_trace(go.Pie(labels=val_counts[col], values=val_counts['count'], name=col, textinfo='percent+label', marker_colors=px.colors.qualitative.Pastel), row=row, col=col_idx)
+                    elif pt == 'bar' or pt == 'histogram':
+                        # Bar chart with distinct colors per category (rainbow shades)
+                        fig_px = px.bar(val_counts, x=col, y='count', color=col, color_discrete_sequence=px.colors.qualitative.Set3)
+                        for trace in fig_px.data:
+                            trace.showlegend = False
+                            fig.add_trace(trace, row=row, col=col_idx)
+                            
+        # Update layout to add bargap for histograms and compact spacing
         fig.update_layout(
-            template="plotly_dark",
-            title_text="Comprehensive Data Summary",
-            height=row_height * len(cols),
-            showlegend=True
+            template="plotly_dark", 
+            height=300 * len(cols), 
+            showlegend=False, 
+            title="Comprehensive Summary Dashboard",
+            bargap=0.1
         )
-        
         fig.show()
