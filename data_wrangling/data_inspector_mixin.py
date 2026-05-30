@@ -235,66 +235,59 @@ class DataInspectorMixin:
                     new_name = f"{k}_{method}" if method != 'onehot' else k
                     self.df[new_name] = v
 
-        print(f"✨ Successfully applied '{method}' to {columns}.")
-
     def summary_plot(self, default_columns=None):
         """
-        Creates a comprehensive Plotly visualization dashboard with a built-in dropdown menu
-        to toggle between columns without requiring any IPython widgets.
+        Creates a comprehensive multi-row Plotly visualization dashboard.
+        Every column gets its own dedicated row of subplots. 
+        Native Plotly legends act as checkboxes to hide/show data.
         """
         if self.df is None: return print("No data loaded.")
         cols = default_columns if default_columns else self.df.columns.tolist()
         
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
+        import plotly.express as px
         
-        fig = make_subplots(rows=1, cols=3, specs=[[{"type": "xy"}, {"type": "xy"}, {"type": "xy"}]], 
-                            subplot_titles=["Distribution / Frequency", "Index vs Value", "Histogram"])
-        
-        buttons = []
-        total_traces = 0
-        trace_indices_per_col = {}
-        
+        # Build dynamic subplot specs
+        specs = []
+        titles = []
         for col in cols:
-            start_idx = total_traces
-            is_num = pd.api.types.is_numeric_dtype(self.df[col])
-            
-            if is_num:
-                fig.add_trace(go.Violin(x=self.df[col], name=col, box_visible=True, meanline_visible=True, visible=False, marker_color='#00CC96'), row=1, col=1)
+            if pd.api.types.is_numeric_dtype(self.df[col]):
+                specs.append([{"type": "xy"}, {"type": "xy"}, {"type": "xy"}])
+                titles.extend([f"{col}: Distribution", f"{col}: Index vs Value", f"{col}: Histogram"])
             else:
+                # Categorical uses Domain for Pie charts
+                specs.append([{"type": "xy"}, {"type": "domain"}, {"type": "domain"}])
+                titles.extend([f"{col}: Frequency Bar", f"{col}: Distribution Pie", ""])
+        
+        # Calculate dynamic height
+        row_height = 300
+        fig = make_subplots(rows=len(cols), cols=3, specs=specs, subplot_titles=titles, vertical_spacing=0.05)
+        
+        colors = px.colors.qualitative.Plotly
+        
+        for i, col in enumerate(cols):
+            row = i + 1
+            color = colors[i % len(colors)]
+            
+            if pd.api.types.is_numeric_dtype(self.df[col]):
+                # Numeric: Violin (with points), Scatter, Histogram
+                fig.add_trace(go.Violin(x=self.df[col], name=col, box_visible=True, meanline_visible=True, points="all", marker_color=color, legendgroup=col), row=row, col=1)
+                fig.add_trace(go.Scatter(x=self.df.index, y=self.df[col], mode='markers', name=col, marker_color=color, legendgroup=col, showlegend=False), row=row, col=2)
+                fig.add_trace(go.Histogram(x=self.df[col], name=col, marker_color=color, legendgroup=col, showlegend=False), row=row, col=3)
+            else:
+                # Categorical: Bar, Pie
                 value_counts = self.df[col].value_counts().reset_index()
                 value_counts.columns = [col, 'count']
-                fig.add_trace(go.Bar(x=value_counts[col], y=value_counts['count'], name=col, visible=False, marker_color='#00CC96'), row=1, col=1)
                 
-            fig.add_trace(go.Scatter(x=self.df.index, y=self.df[col], mode='markers', name=col, visible=False, marker_color='#AB63FA'), row=1, col=2)
-            fig.add_trace(go.Histogram(x=self.df[col], name=col, visible=False, marker_color='#EF553B'), row=1, col=3)
-            
-            trace_indices_per_col[col] = [start_idx, start_idx+1, start_idx+2]
-            total_traces += 3
-            
-        for i, col in enumerate(cols):
-            visibility = [False] * total_traces
-            for idx in trace_indices_per_col[col]:
-                visibility[idx] = True
+                fig.add_trace(go.Bar(x=value_counts[col], y=value_counts['count'], name=col, marker_color=color, legendgroup=col), row=row, col=1)
+                fig.add_trace(go.Pie(labels=value_counts[col], values=value_counts['count'], name=col, legendgroup=col, showlegend=False), row=row, col=2)
                 
-            buttons.append(dict(
-                label=col,
-                method="update",
-                args=[{"visible": visibility},
-                      {"title": f"Summary Plot: {col}"}]
-            ))
-            
-        if cols:
-            first_col = cols[0]
-            for idx in trace_indices_per_col[first_col]:
-                fig.data[idx].visible = True
-        
         fig.update_layout(
-            updatemenus=[dict(active=0, buttons=buttons, x=0.0, xanchor="left", y=1.15, yanchor="top", bgcolor="#333333", bordercolor="#444444", font=dict(color="white"))],
             template="plotly_dark",
-            title_text=f"Summary Plot: {cols[0]}" if cols else "Summary Plot",
-            showlegend=False,
-            height=500
+            title_text="Comprehensive Data Summary",
+            height=row_height * len(cols),
+            showlegend=True
         )
         
         fig.show()
