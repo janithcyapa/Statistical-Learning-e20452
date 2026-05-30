@@ -1,3 +1,5 @@
+import json
+import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import plotly.figure_factory as ff
@@ -7,6 +9,49 @@ class DataPlotter:
     Standalone plotting engine for easy chart generation.
     Pass a dataframe `data` to any method to generate a Plotly chart.
     """
+
+    @staticmethod
+    def _data_validate(data, message_dict):
+        """
+        Universal data validator for all plotter methods.
+        Accepts None, empty strings, DataFrames, lists of records, or JSON strings.
+        Returns a dict with 'status' ('success'/'error'), and either 'data' (list of records)
+        or an updated 'message_dict' with the error reason.
+        """
+        # 1. Handle empty/None input
+        if data is None or (isinstance(data, str) and not data):
+            message_dict.update({'message': 'No data'})
+            return {'status': 'error', 'message_dict': message_dict}
+
+        # 2. Check if data is a DataFrame
+        if isinstance(data, pd.DataFrame):
+            if data.empty:
+                message_dict.update({'message': 'No data'})
+                return {'status': 'error', 'message_dict': message_dict}
+            return {'status': 'success', 'data': data.to_dict(orient='records')}
+
+        # 3. Check if data is a list (records)
+        if isinstance(data, list):
+            if not data:
+                message_dict.update({'message': 'No data'})
+                return {'status': 'error', 'message_dict': message_dict}
+            return {'status': 'success', 'data': data}
+
+        # 4. Handle JSON string input
+        try:
+            parsed_data = json.loads(data)
+            # Support both {'records': [...]} structure OR raw list of records
+            records = parsed_data.get('records') if isinstance(parsed_data, dict) else parsed_data
+
+            if not records:
+                message_dict.update({'message': 'No data'})
+                return {'status': 'error', 'message_dict': message_dict}
+
+            return {'status': 'success', 'data': records}
+
+        except (json.JSONDecodeError, TypeError):
+            message_dict.update({'message': 'Invalid data format'})
+            return {'status': 'error', 'message_dict': message_dict}
 
     @staticmethod
     def _handle_return(fig_or_traces, layout_kwargs, as_trace):

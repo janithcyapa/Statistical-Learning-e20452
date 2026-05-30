@@ -235,116 +235,210 @@ class DataInspectorMixin:
                     new_name = f"{k}_{method}" if method != 'onehot' else k
                     self.df[new_name] = v
 
-    def summary_plot(self, default_columns=None, 
-                     numeric_plots=['violin', 'scatter', 'histogram', 'distplot'], 
-                     categorical_plots=['pie', 'histogram'],
+    def summary_plot(self, columns=None,
+                     numeric_plots=None,
+                     categorical_plots=None,
                      separate_plots=False, subplot_cols=3):
         """
         Creates a comprehensive multi-row Plotly visualization dashboard.
-        If separate_plots is True, every column gets its own dedicated row of subplots.
-        If False, combines all numerical columns into one plot set, and categorical into another.
+
+        Parameters
+        ----------
+        columns : list[str] or None
+            Specific column names to visualize. If None, uses all columns in self.df.
+        numeric_plots : list[str] or None
+            Plot types for numerical columns. Supported: 'violin', 'scatter',
+            'histogram', 'distplot'. Defaults to ['violin', 'scatter', 'distplot'].
+        categorical_plots : list[str] or None
+            Plot types for categorical columns. Supported: 'pie', 'histogram', 'bar'.
+            Defaults to ['pie', 'histogram'].
+        separate_plots : bool
+            If True, each column gets its own dedicated row of subplots.
+            If False (default), all numerical columns share one set of plots and
+            all categorical columns share another.
+        subplot_cols : int
+            Number of subplot columns per row (default 3).
         """
-        if self.df is None: return print("No data loaded.")
-        cols = default_columns if default_columns else self.df.columns.tolist()
-            
+        if self.df is None:
+            print("⚠️ No data loaded.")
+            return
+
+        # --- Defaults ---
+        if numeric_plots is None:
+            numeric_plots = ['violin', 'scatter', 'distplot']
+        if categorical_plots is None:
+            categorical_plots = ['pie', 'histogram']
+
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
         import plotly.express as px
         import plotly.figure_factory as ff
         import math
-        
-        colors = px.colors.qualitative.Plotly
-        
+
+        # --- Resolve & validate columns ---
+        all_cols = self.df.columns.tolist()
+        if columns is not None:
+            invalid = [c for c in columns if c not in all_cols]
+            if invalid:
+                print(f"⚠️ Columns not found in data and skipped: {invalid}")
+            cols = [c for c in columns if c in all_cols]
+        else:
+            cols = all_cols
+
+        if not cols:
+            print("⚠️ No valid columns to plot.")
+            return
+
+        colors = px.colors.qualitative.Vivid + px.colors.qualitative.Plotly
+
+        # --- Helper: add a single plot trace to fig ---
+        def _add_numeric_trace(fig, pt, col_name, row, col_idx, color):
+            """Add a single numeric plot type to the figure."""
+            data_series = self.df[col_name].dropna()
+            if data_series.empty:
+                return
+            if pt == 'violin':
+                fig.add_trace(
+                    go.Violin(x=data_series, name=col_name, box_visible=True,
+                              meanline_visible=True, points='all',
+                              marker_color=color, showlegend=False),
+                    row=row, col=col_idx)
+            elif pt == 'scatter':
+                fig.add_trace(
+                    go.Scatter(x=data_series.index, y=data_series, mode='markers',
+                               name=col_name, marker=dict(color=color, size=5,
+                               opacity=0.7), showlegend=False),
+                    row=row, col=col_idx)
+            elif pt == 'histogram':
+                fig.add_trace(
+                    go.Histogram(x=data_series, name=col_name,
+                                 marker_color=color, opacity=0.8,
+                                 showlegend=False),
+                    row=row, col=col_idx)
+            elif pt == 'distplot':
+                try:
+                    if len(data_series) > 1:
+                        fig_dist = ff.create_distplot(
+                            [data_series.values], [col_name], colors=[color],
+                            show_rug=False)
+                        for trace in fig_dist['data']:
+                            trace.xaxis = None
+                            trace.yaxis = None
+                            trace.showlegend = False
+                            fig.add_trace(trace, row=row, col=col_idx)
+                except Exception:
+                    pass
+
+        def _add_categorical_trace(fig, pt, col_name, row, col_idx, color):
+            """Add a single categorical plot type to the figure."""
+            val_counts = self.df[col_name].value_counts().reset_index()
+            val_counts.columns = [col_name, 'count']
+            if val_counts.empty:
+                return
+            if pt == 'pie':
+                fig.add_trace(
+                    go.Pie(labels=val_counts[col_name], values=val_counts['count'],
+                           name=col_name, textinfo='percent+label', hole=0.3,
+                           marker=dict(colors=px.colors.qualitative.Pastel)),
+                    row=row, col=col_idx)
+            elif pt in ('bar', 'histogram'):
+                cat_colors = px.colors.qualitative.Set3[:len(val_counts)]
+                fig.add_trace(
+                    go.Bar(x=val_counts[col_name].astype(str),
+                           y=val_counts['count'], name=col_name,
+                           marker_color=cat_colors if len(cat_colors) == len(val_counts)
+                           else color, showlegend=False),
+                    row=row, col=col_idx)
+
+        # =========================================================
+        #  MODE 1: SEPARATE — each column gets its own row of plots
+        # =========================================================
         if separate_plots:
-            # ORIGINAL LOGIC: 1 Row per Column
-            max_cols = 0
+            max_plot_cols = 0
             row_specs = []
             row_titles = []
-            
+
             for col in cols:
                 is_num = pd.api.types.is_numeric_dtype(self.df[col])
                 plot_types = numeric_plots if is_num else categorical_plots
-                max_cols = max(max_cols, len(plot_types))
-                
+                max_plot_cols = max(max_plot_cols, len(plot_types))
+
                 current_spec = []
                 for pt in plot_types:
-                    current_spec.append({"type": "domain"} if pt == 'pie' else {"type": "xy"})
+                    current_spec.append(
+                        {"type": "domain"} if pt == 'pie' else {"type": "xy"})
                 row_specs.append(current_spec)
-                
+
                 for pt in plot_types:
-                    row_titles.append(f"{col}: {pt.capitalize()}")
-                    
+                    row_titles.append(f"{col} — {pt.capitalize()}")
+
+            # Pad short rows with None so all rows have the same number of cols
             for spec_row in row_specs:
-                while len(spec_row) < max_cols:
+                while len(spec_row) < max_plot_cols:
                     spec_row.append(None)
                     row_titles.append("")
-                    
-            fig = make_subplots(rows=len(cols), cols=max_cols, specs=row_specs, subplot_titles=row_titles, vertical_spacing=0.04, horizontal_spacing=0.04)
-            
+
+            if max_plot_cols == 0:
+                print("⚠️ No plots to draw.")
+                return
+
+            fig = make_subplots(
+                rows=len(cols), cols=max_plot_cols, specs=row_specs,
+                subplot_titles=row_titles,
+                vertical_spacing=max(0.02, 0.15 / len(cols)),
+                horizontal_spacing=0.05)
+
             for i, col in enumerate(cols):
                 row = i + 1
                 is_num = pd.api.types.is_numeric_dtype(self.df[col])
                 plot_types = numeric_plots if is_num else categorical_plots
                 base_color = colors[i % len(colors)]
-                
+
                 for j, pt in enumerate(plot_types):
-                    col_idx = j + 1
-                    
                     if is_num:
-                        if pt == 'violin':
-                            fig.add_trace(go.Violin(x=self.df[col], name=col, box_visible=True, points="all", marker_color=base_color, showlegend=False), row=row, col=col_idx)
-                        elif pt == 'scatter':
-                            fig.add_trace(go.Scatter(x=self.df.index, y=self.df[col], mode='markers', name=col, marker_color=base_color, showlegend=False), row=row, col=col_idx)
-                        elif pt == 'histogram':
-                            fig.add_trace(go.Histogram(x=self.df[col], name=col, marker_color=base_color, showlegend=False), row=row, col=col_idx)
-                        elif pt == 'distplot':
-                            try:
-                                hist_data = [self.df[col].dropna()]
-                                fig_dist = ff.create_distplot(hist_data, [col], colors=[base_color])
-                                for trace in fig_dist['data']:
-                                    trace.xaxis = None 
-                                    trace.yaxis = None
-                                    trace.showlegend = False
-                                    fig.add_trace(trace, row=row, col=col_idx)
-                            except Exception:
-                                pass
+                        _add_numeric_trace(fig, pt, col, row, j + 1, base_color)
                     else:
-                        val_counts = self.df[col].value_counts().reset_index()
-                        val_counts.columns = [col, 'count']
-                        
-                        if pt == 'pie':
-                            fig.add_trace(go.Pie(labels=val_counts[col], values=val_counts['count'], name=col, textinfo='percent+label', marker_colors=px.colors.qualitative.Pastel), row=row, col=col_idx)
-                        elif pt == 'bar' or pt == 'histogram':
-                            fig_px = px.bar(val_counts, x=col, y='count', color=col, color_discrete_sequence=px.colors.qualitative.Set3)
-                            for trace in fig_px.data:
-                                trace.showlegend = False
-                                fig.add_trace(trace, row=row, col=col_idx)
-                                
-            fig.update_layout(template="plotly_dark", height=300 * len(cols), showlegend=False, title="Comprehensive Summary Dashboard", bargap=0.1)
+                        _add_categorical_trace(fig, pt, col, row, j + 1, base_color)
+
+            fig.update_layout(
+                template="plotly_dark",
+                height=max(400, 300 * len(cols)),
+                showlegend=False,
+                title_text="Summary Dashboard — Separate View",
+                title_x=0.5,
+                bargap=0.15,
+                # paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Inter, sans-serif"))
             fig.show()
-            
+
+        # =========================================================
+        #  MODE 2: COMBINED — all numericals together, categoricals together
+        # =========================================================
         else:
-            # COMBINED LOGIC: All numericals in 1 set of plots, all categoricals in another
             num_cols = [c for c in cols if pd.api.types.is_numeric_dtype(self.df[c])]
             cat_cols = [c for c in cols if not pd.api.types.is_numeric_dtype(self.df[c])]
-            
+
             plot_cells = []
             if num_cols:
                 for pt in numeric_plots:
-                    plot_cells.append({"type": "xy", "name": pt, "group": "num", "title": f"Numerical: {pt.capitalize()}"})
+                    plot_cells.append({
+                        "type": "xy", "name": pt, "group": "num",
+                        "title": f"Numerical — {pt.capitalize()}"})
             if cat_cols:
                 for pt in categorical_plots:
-                    if pt == 'pie':
-                        plot_cells.append({"type": "domain", "name": "sunburst", "group": "cat", "title": "Categorical: Sunburst / Pie"})
-                    else:
-                        plot_cells.append({"type": "xy", "name": pt, "group": "cat", "title": f"Categorical: {pt.capitalize()}"})
-                        
-            if not plot_cells: return print("No valid plots to draw.")
-            
+                    spec_type = "domain" if pt == 'pie' else "xy"
+                    plot_cells.append({
+                        "type": spec_type, "name": pt, "group": "cat",
+                        "title": f"Categorical — {pt.capitalize()}"})
+
+            if not plot_cells:
+                print("⚠️ No valid plots to draw.")
+                return
+
             rows = math.ceil(len(plot_cells) / subplot_cols)
             row_specs = []
             row_titles = []
-            
+
             for r in range(rows):
                 spec_row = []
                 for c in range(subplot_cols):
@@ -356,38 +450,50 @@ class DataInspectorMixin:
                         spec_row.append(None)
                         row_titles.append("")
                 row_specs.append(spec_row)
-                
-            fig = make_subplots(rows=rows, cols=subplot_cols, specs=row_specs, subplot_titles=row_titles, vertical_spacing=0.08, horizontal_spacing=0.05)
-            
+
+            fig = make_subplots(
+                rows=rows, cols=subplot_cols, specs=row_specs,
+                subplot_titles=row_titles,
+                vertical_spacing=0.10, horizontal_spacing=0.06)
+
             for idx, cell in enumerate(plot_cells):
                 row = (idx // subplot_cols) + 1
                 col = (idx % subplot_cols) + 1
                 pt = cell["name"]
-                
+
                 if cell["group"] == "num":
-                    if pt == 'violin':
-                        for i, c in enumerate(num_cols):
-                            fig.add_trace(go.Violin(x=self.df[c], name=c, marker_color=colors[i % len(colors)]), row=row, col=col)
-                    elif pt == 'scatter':
-                        for i, c in enumerate(num_cols):
-                            fig.add_trace(go.Scatter(x=self.df.index, y=self.df[c], mode='markers', name=c, marker_color=colors[i % len(colors)]), row=row, col=col)
-                    elif pt == 'histogram':
-                        for i, c in enumerate(num_cols):
-                            fig.add_trace(go.Histogram(x=self.df[c], name=c, marker_color=colors[i % len(colors)]), row=row, col=col)
-                    elif pt == 'distplot':
+                    if pt == 'distplot':
+                        # Distplot merges all numeric columns into one subplot
                         try:
-                            valid_cols = [c for c in num_cols if len(self.df[c].dropna()) > 1]
-                            hist_data = [self.df[c].dropna() for c in valid_cols]
-                            if hist_data:
-                                fig_dist = ff.create_distplot(hist_data, valid_cols, colors=[colors[i % len(colors)] for i in range(len(valid_cols))])
+                            valid = [c for c in num_cols
+                                     if len(self.df[c].dropna()) > 1]
+                            if valid:
+                                hist_data = [self.df[c].dropna().values
+                                             for c in valid]
+                                clrs = [colors[i % len(colors)]
+                                        for i in range(len(valid))]
+                                fig_dist = ff.create_distplot(
+                                    hist_data, valid, colors=clrs,
+                                    show_rug=False)
                                 for trace in fig_dist['data']:
                                     trace.xaxis = None
                                     trace.yaxis = None
                                     fig.add_trace(trace, row=row, col=col)
                         except Exception:
                             pass
+                    else:
+                        for i, c in enumerate(num_cols):
+                            _add_numeric_trace(
+                                fig, pt, c, row, col,
+                                colors[i % len(colors)])
+
                 elif cell["group"] == "cat":
-                    if pt == 'sunburst':
+                    if pt == 'pie' and len(cat_cols) == 1:
+                        # Single categorical column → simple pie
+                        _add_categorical_trace(
+                            fig, 'pie', cat_cols[0], row, col, colors[0])
+                    elif pt == 'pie' and len(cat_cols) > 1:
+                        # Multiple categoricals → sunburst
                         try:
                             cat_df = self.df[cat_cols].fillna("Unknown").astype(str)
                             fig_sun = px.sunburst(cat_df, path=cat_cols)
@@ -396,12 +502,22 @@ class DataInspectorMixin:
                             fig.add_trace(sun_trace, row=row, col=col)
                         except Exception:
                             pass
-                    elif pt == 'histogram' or pt == 'bar':
+                    elif pt in ('histogram', 'bar'):
                         for i, c in enumerate(cat_cols):
-                            val_counts = self.df[c].value_counts().reset_index()
-                            val_counts.columns = ['category', 'count']
-                            val_counts['category'] = c + ": " + val_counts['category'].astype(str)
-                            fig.add_trace(go.Bar(x=val_counts['category'], y=val_counts['count'], name=c, marker_color=colors[i % len(colors)]), row=row, col=col)
-                            
-            fig.update_layout(template="plotly_dark", height=400 * rows, showlegend=True, title="Combined Summary Dashboard", bargap=0.1, barmode='overlay')
+                            _add_categorical_trace(
+                                fig, pt, c, row, col,
+                                colors[i % len(colors)])
+
+            fig.update_layout(
+                template="plotly_dark",
+                height=max(450, 400 * rows),
+                showlegend=True,
+                title_text="Summary Dashboard — Combined View",
+                title_x=0.5,
+                bargap=0.15,
+                barmode='group',
+                # paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Inter, sans-serif"),
+                legend=dict(orientation="h", yanchor="bottom",
+                            y=-0.08, xanchor="center", x=0.5))
             fig.show()
